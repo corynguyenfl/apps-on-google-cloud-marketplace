@@ -1,6 +1,6 @@
 # Evaluation Report - Offering OpenDSO Software on Google Cloud Marketplace
 
-## 1. Executive Summary
+## 1. Summary
 
 This report evaluates the feasibility, requirements, and recommended approach for offering our **containerized, OpenDSO software** on **Google Cloud Marketplace**.
 
@@ -101,7 +101,7 @@ An **externally hosted SaaS** offering is **not recommended as the initial appro
 
 ### Authorization Model
 
-* Coarse, role-based access recommended:
+* Coarse, role-based access:
 
   * Viewer
   * Operator
@@ -117,7 +117,7 @@ An **externally hosted SaaS** offering is **not recommended as the initial appro
   * Access to Secret Manager, Artifact Registry, and other GCP services
 * No static cloud credentials baked into containers
 
-**Assessment:**
+**NOTE:**
 This hybrid model (Keycloak for app/NATS auth, IAM for infrastructure) meets Google Cloud Marketplace security expectations without requiring disruptive re-architecture.
 
 ## 6. Security & Key Management Considerations
@@ -282,6 +282,51 @@ OES provides:
 * Validation of measurement and control operations
 * Support during initial commissioning
 
+### Edge Node Provisioning
+
+Edge onboarding is vendor-managed and security-controlled; Marketplace only handles cloud-side deployment.  Marketplace is **not** responsible for edge provisioning, identity, or configuration.
+That is normal and expected.
+
+#### Edge Onboarding Patterns
+
+Pre-Provisioned Edge: 
+
+**Recommended default**
+
+**How it works**
+
+* Vendor prepares edge node:
+
+  * OS image or container bundle
+  * NATS client
+  * OpenFMB adapters
+  * Base config template
+* Edge is shipped or installed onsite
+* Customer connects it to network
+* Edge establishes outbound connection to cloud
+
+**Identity**
+
+* Edge has:
+
+  * unique client ID
+  * Keycloak client credentials or cert
+* JWTs issued by Keycloak
+* NATS auth uses JWT + pinned public key
+
+**Pros**
+
+* Predictable
+* Secure
+* Works behind firewalls/NAT
+* Familiar to utilities
+
+**Cons**
+
+* Requires vendor involvement
+
+---
+
 ### Typical Onboarding Flow
 
 1. **Marketplace Deployment**
@@ -308,7 +353,7 @@ Advanced configuration, custom integrations, and large-scale deployments may req
 ### Packaging Professional Services Alongside Marketplace Subscriptions
 
 Google Cloud Marketplace supports **software procurement**, not deep system integration.
-We need to define package professional services outside of Marketplace billing.
+We **need** to define package professional services outside of Marketplace billing.
 
 ## 11. Scalability
 
@@ -346,21 +391,100 @@ The solution is deployed on GKE and leverages Kubernetes-native autoscaling mech
 | Customer networking variability       | Medium     | Reference architecture            |
 | Operational support load              | Low–Medium | Clear support scope               |
 
-## 14. Final Recommendation
+## 14. Supply Chain Security
 
-### Recommendation
+The solution follows a **defense-in-depth supply chain security model** designed to protect against compromised build systems, tampered artifacts, and vulnerable dependencies. Controls span **source code, build pipelines, container images, registries, and runtime deployment**, and align with cloud-native best practices for enterprise and critical-infrastructure software.
 
-Kubernetes-based Marketplace Application
+### Source Code & Build Integrity
 
-### Why
+* All source code is maintained in version-controlled repositories with controlled access.
+* Changes are reviewed prior to merge using standard code review processes.
+* Build pipelines are fully automated and run in isolated CI environments.
+* Build credentials are short-lived and scoped to the minimum required permissions.
 
-* Strong architectural alignment
-* Minimal disruption to existing auth and NATS design
-* Matches utility customer expectations
-* Acceptable effort and risk profile
+### CI/CD Pipeline Security
+
+* CI/CD pipelines authenticate to cloud services using **OIDC-based workload identity** rather than long-lived static credentials.
+* Pipelines are restricted to publishing artifacts only to vendor-owned registries.
+* Production images are built from **pinned base images** to ensure reproducibility.
+* Immutable version tags are used for all production images; mutable tags (e.g., `latest`) are not relied upon for deployments.
+
+### Container Image Registry & Integrity
+
+* All container images are stored in **Google Artifact Registry** under a vendor-controlled Google Cloud project.
+* Artifact Registry access is enforced using **Google IAM**, ensuring that only authorized build systems can push images.
+* Customer deployments pull images through Marketplace-managed permissions; images are not publicly accessible.
+
+### Vulnerability Scanning & Remediation
+
+* Container images stored in Artifact Registry are **automatically scanned for known vulnerabilities** upon push.
+* Vulnerability findings include:
+
+  * CVE identifiers
+  * Severity ratings (Low, Medium, High, Critical)
+  * Affected packages and versions
+* High and critical vulnerabilities are tracked and remediated through:
+
+  * Base image updates
+  * Dependency upgrades
+  * Image rebuilds and redeployments
+* Zero known vulnerabilities are not guaranteed at all times; instead, we will focus is on **timely remediation** and risk-based prioritization.
+
+### Image Signing & Build Verification
+
+* Container images are **cryptographically signed at build time** using
+  **Sigstore cosign** with **keyless identity-based signing**.
+* Image signatures are generated using GitHub Actions’ **OIDC identity**
+  and are published **alongside container images** in the container registry.
+* Each image signature is bound to:
+  * The originating GitHub repository
+  * The exact CI workflow file
+  * The source branch used for the build
+* Image signatures are **verified as part of the CI pipeline** to ensure
+  signing correctness prior to release.
+* Customers may independently verify image signatures using standard
+  `cosign verify` workflows.
+* Runtime enforcement of signed images is **customer-configurable** and
+  may be enabled using Kubernetes admission controls (e.g., policy engines),
+  if required.
+
+### Dependency Management
+
+* OS-level and language-level dependencies are explicitly defined and version-controlled.
+* Dependency updates are incorporated through regular maintenance releases.
+* Third-party libraries are monitored for security advisories as part of ongoing maintenance.
+
+### Deployment & Runtime Trust
+
+* Customer deployments pull images directly from Artifact Registry using IAM-controlled access.
+* Images are referenced by **immutable digests or versioned tags** in Helm charts.
+* No images are downloaded from anonymous or public registries during production deployment.
+* Customers retain full control over runtime policies, including network restrictions and admission controls.
+
+### Auditability & Transparency
+
+* Artifact Registry provides audit logs for:
+
+  * image uploads
+  * access attempts
+  * vulnerability scan results
+* CI/CD pipelines produce auditable build logs.
+* The vendor maintains documentation describing:
+
+  * build and release processes
+  * vulnerability response procedures
+  * image signing and verification options
+
+OpenDSO’s supply chain security model:
+
+* Uses **trusted, cloud-native tooling**
+* Minimizes reliance on public registries
+* Provides **visibility, auditability, and control** over artifacts
+* Supports enterprise and utility security expectations without introducing unnecessary operational complexity
+
+This approach aligns with Google Cloud Marketplace requirements.
 
 ## 15. Current State vs Marketplace-Ready State
-
 
 | Area                   | Current State                                 | Marketplace Requirement             | Gap             |
 | ---------------------- | --------------------------------------------- | ----------------------------------- | --------------- |
@@ -370,7 +494,7 @@ Kubernetes-based Marketplace Application
 | Key Rotation           | Implicit / manual                             | Explicit, documented, zero-downtime | **Medium–High** |
 | Helm Packaging         | Partial / internal                            | Marketplace-ready Helm charts       | **High**        |
 | Kubernetes Deployment  | Some POC done                                 | Deterministic, self-service         | **High**        |
-| Billing & Entitlement  | Not unified                                   | Enforced across all services        | **High**        |
+| Billing & Entitlement  | -                                             | Enforced across all services        | **High**        |
 | Documentation & Review | Internal docs                                 | Marketplace-grade                   | **High**        |
 
 ### 15.1 CI/CD → Google Artifact Registry

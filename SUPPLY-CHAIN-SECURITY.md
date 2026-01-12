@@ -49,14 +49,23 @@ The solution follows a **defense-in-depth supply chain security model** designed
 
 ---
 
-## Image Signing & Provenance
+### Image Signing & Build Verification
 
-* The build process supports **cryptographic image signing** using industry-standard tooling.
-* Image signatures are stored alongside images in Artifact Registry.
-* Customers may optionally verify image signatures prior to deployment.
-* Runtime enforcement of signed images can be enabled by customers using Kubernetes admission controls if required.
-
----
+* Container images are **cryptographically signed at build time** using
+  **Sigstore cosign** with **keyless identity-based signing**.
+* Image signatures are generated using GitHub Actions’ **OIDC identity**
+  and are published **alongside container images** in the container registry.
+* Each image signature is bound to:
+  - The originating GitHub repository
+  - The exact CI workflow file
+  - The source branch used for the build
+* Image signatures are **verified as part of the CI pipeline** to ensure
+  signing correctness prior to release.
+* Customers may independently verify image signatures using standard
+  `cosign verify` workflows.
+* Runtime enforcement of signed images is **customer-configurable** and
+  may be enabled using Kubernetes admission controls (e.g., policy engines),
+  if required.
 
 ## Dependency Management
 
