@@ -1,13 +1,20 @@
-# Evaluation Report - Offering OpenDSO Software on Google Cloud Marketplace
 
-## 1. Summary
+# Evaluation Report – Offering OpenDSO Software on Google Cloud Marketplace
+
+## Executive Summary
+
+This report provides an evaluation of the technical, operational, and business requirements for offering OpenDSO software on Google Cloud Marketplace. It recommends a customer-hosted Kubernetes application (GKE/Helm-based) as the optimal initial approach, outlines the necessary steps for Marketplace readiness, and details the responsibilities, risks, and security considerations for both OES and customer.
+
+## 1. Overview
 
 This report evaluates the feasibility, requirements, and recommended approach for offering our **containerized, OpenDSO software** on **Google Cloud Marketplace**.
 
-**Recommenation:**
-Offering the software as a **customer-hosted Kubernetes application (GKE / Helm-based)** on Google Cloud Marketplace is **technically feasible**, **well aligned with the existing architecture**.
 
-An **externally hosted SaaS** offering is **not recommended as the initial approach** due to architectural, operational, and regulatory mismatches, but may be considered as a future extension.
+**Recommendation:**
+Offering the software as a **customer-hosted Kubernetes application (GKE / Helm-based)** on Google Cloud Marketplace is **technically feasible** and **well aligned with the existing architecture**.
+
+
+An **externally hosted SaaS** offering is **not recommended as the initial approach** due to architectural, operational, and regulatory mismatches. However, it may be considered as a future extension if requirements evolve.
 
 ## 2. Product Overview (Current State)
 
@@ -17,25 +24,24 @@ An **externally hosted SaaS** offering is **not recommended as the initial appro
 * OpenFMB-based data and control plane
 * OpenFMB adapters (DNP3 / MODBUS / OCPP1.6j → OpenFMB)
 * NATS-based pub/sub event bus
-* Web UI (one-line visualization, monitoring)
-* Active device control:
-
-  * Breaker / switch / recloser open-close
+* Web UI for one-line visualization and monitoring
+* Active device control, including:
+  * Breaker, switch, and recloser open/close
   * DER P/Q setpoints (ESS, PV, Generator)
 * DER dispatch and optimization
 * ESS management and automated testing
 * Asset health monitoring, prediction, and maintenance recommendations
-* Data viewer with embedded Grafana dashboard
+* Data viewer with embedded Grafana dashboard and other OpenDSO components
+* Looker Studio business intelligence
+
 
 ### Key Architectural Characteristics
 
 * Pub/Sub (NATS)
-* Control-plane and data-plane separation
-* Real-time control
+* Separation of control-plane and data-plane
+* Real-time control capabilities
 * Single-tenant per deployment
-* Designed for utility / critical-infrastructure environments
-
----
+* Designed for utility and its critical-infrastructure environments
 
 ## 3. Marketplace Offer Model Evaluation
 
@@ -47,7 +53,7 @@ An **externally hosted SaaS** offering is **not recommended as the initial appro
 | VM-based Marketplace App                | ⚠️ Medium | Viable but less future-proof; weaker Kubernetes alignment                                                                                |
 | **Kubernetes Application (GKE / Helm)** | ✅ Strong  | Best architectural fit; aligns with containerized, single-tenant design                                                                  |
 
-### Recommneded Model
+### Recommended Model
 
 **Customer-hosted Kubernetes application deployed via Google Cloud Marketplace (GKE / Helm)**
 
@@ -393,29 +399,29 @@ The solution is deployed on GKE and leverages Kubernetes-native autoscaling mech
 
 ## 14. Supply Chain Security
 
-The solution follows a **defense-in-depth supply chain security model** designed to protect against compromised build systems, tampered artifacts, and vulnerable dependencies. Controls span **source code, build pipelines, container images, registries, and runtime deployment**, and align with cloud-native best practices for enterprise and critical-infrastructure software.
+OpenDSO follows a **defense-in-depth supply chain security model** designed to protect against compromised build systems, tampered artifacts, and vulnerable dependencies. Controls span **source code, build pipelines, container images, registries, and runtime deployment**, and align with cloud-native best practices for enterprise and critical-infrastructure software.
 
-### Source Code & Build Integrity
+### Source Code & Build Integrity (Exists today)
 
 * All source code is maintained in version-controlled repositories with controlled access.
 * Changes are reviewed prior to merge using standard code review processes.
-* Build pipelines are fully automated and run in isolated CI environments.
-* Build credentials are short-lived and scoped to the minimum required permissions.
+* Build pipelines are fully automated and run in **ephemeral, managed CI environment** provided by GitHub Actions, with isolated execution contexts per workflow run.
+* Build credentials are short-lived and scoped to the minimum required permissions, using GitHub Actions OpenID Connect (OIDC) identity and explicitly defined workflow permissions.
 
-### CI/CD Pipeline Security
+### CI/CD Pipeline Security (Exists today)
 
 * CI/CD pipelines authenticate to cloud services using **OIDC-based workload identity** rather than long-lived static credentials.
 * Pipelines are restricted to publishing artifacts only to vendor-owned registries.
-* Production images are built from **pinned base images** to ensure reproducibility.
+* Production images are built from **pinned base images** to ensure reproducibility. (Need to check all builds)
 * Immutable version tags are used for all production images; mutable tags (e.g., `latest`) are not relied upon for deployments.
 
-### Container Image Registry & Integrity
+### Container Image Registry & Integrity (To-be Done)
 
 * All container images are stored in **Google Artifact Registry** under a vendor-controlled Google Cloud project.
 * Artifact Registry access is enforced using **Google IAM**, ensuring that only authorized build systems can push images.
 * Customer deployments pull images through Marketplace-managed permissions; images are not publicly accessible.
 
-### Vulnerability Scanning & Remediation
+### Vulnerability Scanning & Remediation (Built-in) 
 
 * Container images stored in Artifact Registry are **automatically scanned for known vulnerabilities** upon push.
 * Vulnerability findings include:
@@ -430,7 +436,7 @@ The solution follows a **defense-in-depth supply chain security model** designed
   * Image rebuilds and redeployments
 * Zero known vulnerabilities are not guaranteed at all times; instead, we will focus is on **timely remediation** and risk-based prioritization.
 
-### Image Signing & Build Verification
+### Image Signing & Build Verification (Exists today)
 
 * Container images are **cryptographically signed at build time** using
   **Sigstore cosign** with **keyless identity-based signing**.
@@ -448,20 +454,24 @@ The solution follows a **defense-in-depth supply chain security model** designed
   may be enabled using Kubernetes admission controls (e.g., policy engines),
   if required.
 
-### Dependency Management
+### Dependency Management (Partially Done)
 
-* OS-level and language-level dependencies are explicitly defined and version-controlled.
-* Dependency updates are incorporated through regular maintenance releases.
-* Third-party libraries are monitored for security advisories as part of ongoing maintenance.
+* OS-level and language-level dependencies are explicitly defined in source control
+  (base images and package manifests/lockfiles) to ensure repeatable builds.
+* Dependency updates are automated via dependency update tooling and released through
+  regular maintenance releases, with expedited patches for critical security issues.
+* Third-party dependencies are continuously monitored for security advisories using
+  repository and CI-based vulnerability checks, and findings are triaged and remediated
+  according to a documented severity policy.
 
-### Deployment & Runtime Trust
+### Deployment & Runtime Trust (To-be Done)
 
 * Customer deployments pull images directly from Artifact Registry using IAM-controlled access.
 * Images are referenced by **immutable digests or versioned tags** in Helm charts.
 * No images are downloaded from anonymous or public registries during production deployment.
 * Customers retain full control over runtime policies, including network restrictions and admission controls.
 
-### Auditability & Transparency
+### Auditability & Transparency (Built-in)
 
 * Artifact Registry provides audit logs for:
 
@@ -499,7 +509,7 @@ This approach aligns with Google Cloud Marketplace requirements.
 
 ### 15.1 CI/CD → Google Artifact Registry
 
-### What Needs to Be Done
+#### What Needs to Be Done
 
 * Update all build pipelines to:
 
@@ -508,31 +518,31 @@ This approach aligns with Google Cloud Marketplace requirements.
 * Update Helm charts to reference Artifact Registry images
 * Ensure immutable tagging (no `latest` for production)
 
-### Estimated Effort
+#### Estimated Effort
 
 * **1–2 days per repo**
 * Parallelizable
 
-### Deliverables
+#### Deliverables
 
 * CI templates updated
 * Artifact Registry repo structure defined
 * Verified multi-arch pushes
 
-## 15.2 Logging: EFK → Google Cloud Logging
+### 15.2 Logging: EFK → Google Cloud Logging
 
-### What Needs to Be Done
+#### What Needs to Be Done
 
 * Remove Elasticsearch/Kibana
 * Rely on GKE’s native logging agent
 * Update documentation to reference Cloud Logging
 
-### Code Impact
+#### Code Impact
 
 * **None required**
 * Optional: structured JSON logging later
 
-### Estimated Effort
+#### Estimated Effort
 
 * **2–3 days**
 
@@ -540,16 +550,14 @@ This approach aligns with Google Cloud Marketplace requirements.
   * doc updates
   * retention policy definition
 
-### Deliverables
+#### Deliverables
 
 * Cloud Logging queries documented
 * Retention/exclusion guidance
 
----
+### 15.3 Authentication Hardening (Keycloak + NATS)
 
-## 15.3 Authentication Hardening (Keycloak + NATS)
-
-### What Needs to Be Done
+#### What Needs to Be Done
 
 * Document JWT contract:
 
@@ -561,47 +569,47 @@ This approach aligns with Google Cloud Marketplace requirements.
 * Enforce TLS everywhere
 * Standardize role → permission mapping
 
-### Key Decisions
+#### Key Decisions
 
 * Keep Keycloak per customer
 * Keep JWT-based NATS auth with pinned public keys
 
-### Estimated Effort
+#### Estimated Effort
 
 * **1–2 weeks**
 
-### Deliverables
+#### Deliverables
 
 * Auth architecture doc
 * Role/permission matrix
 * Security review checklist
 
-## 15.4 Key Rotation (Keycloak → NATS)
+### 15.4 Key Rotation (Keycloak → NATS)
 
-### What Needs to Be Done
+#### What Needs to Be Done
 
 * Define public key distribution mechanism
 * Support dual-key trust in NATS
 * Document zero-downtime rotation process
 * Optional automation for key export → secret update
 
-### Why This Is High-Risk
+#### Why This Is High-Risk
 
 Pinned keys mean **rotation must be explicit**.
 
-### Estimated Effort
+#### Estimated Effort
 
 * **1–2 weeks**
 
-### Deliverables
+#### Deliverables
 
 * Key rotation runbook
 * Helm/K8s support for multiple public keys
 * Operational checklist
 
-## 15.5 Helm Packaging (Marketplace-Grade)
+### 15.5 Helm Packaging (Marketplace-Grade)
 
-### What Needs to Be Done
+#### What Needs to Be Done
 
 * Create a top-level Helm chart with subcharts:
 
@@ -613,24 +621,24 @@ Pinned keys mean **rotation must be explicit**.
 * Externalize all config via `values.yaml`
 * Support tier-based configuration (billing)
 
-### Key Decisions
+#### Key Decisions
 
 * Single-tenant per install
 * Opinionated defaults, overrideable values
 
-### Estimated Effort
+#### Estimated Effort
 
 * **3–4 weeks**
 
-### Deliverables
+#### Deliverables
 
 * Marketplace-ready Helm chart
 * Installation/upgrade/uninstall paths
 * Values reference documentation
 
-## 15.6 Kubernetes Deployment Hardening
+### 15.6 Kubernetes Deployment Hardening
 
-### What Needs to Be Done
+#### What Needs to Be Done
 
 * Validate:
 
@@ -640,20 +648,20 @@ Pinned keys mean **rotation must be explicit**.
 * Ensure clean install/uninstall
 * Verify upgrades don’t break state
 
-### Estimated Effort
+#### Estimated Effort
 
 * **1–2 weeks**
 * Overlaps with Helm work
 
-### Deliverables
+#### Deliverables
 
 * Production-ready deployment profiles
 * Reference architecture diagram
 * Capacity guidance
 
-## 15.7 Billing & Entitlement Integration (Multi-Language)
+### 15.7 Billing & Entitlement Integration (Multi-Language)
 
-### What Needs to Be Done
+#### What Needs to Be Done
 
 * Define **single entitlement model**:
 
@@ -669,7 +677,7 @@ Pinned keys mean **rotation must be explicit**.
 * Ensure server-side enforcement (not UI-only)
 * Define cancellation behavior
 
-### Key Decisions
+#### Key Decisions
 
 * Subscription-only
 * Helm-driven tier selection
@@ -678,16 +686,16 @@ Pinned keys mean **rotation must be explicit**.
 
 * **2–4 weeks** (this is the heaviest lift)
 
-### Deliverables
+#### Deliverables
 
 * Entitlement spec
 * Shared enforcement guidelines
 * Tests proving limits are enforced
 * `/entitlement` endpoint for UI
 
-## 15.8 Documentation & Marketplace Review
+### 15.8 Documentation & Marketplace Review
 
-### What Needs to Be Done
+#### What Needs to Be Done
 
 * Write Marketplace-facing docs:
 
@@ -698,11 +706,11 @@ Pinned keys mean **rotation must be explicit**.
 * Prepare reviewer test plan
 * Respond to review feedback
 
-### Estimated Effort
+#### Estimated Effort
 
 * **1–2 weeks** (often overlaps with review cycles)
 
-### Deliverables
+#### Deliverables
 
 * Complete Marketplace submission package
 * Reviewer Q&A responses
